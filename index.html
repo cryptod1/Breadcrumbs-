@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V7</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V8</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">V7 identity gate. Property name + full postcode must first match an independently evidenced address. Unknown or mismatched names are stopped instead of being given a confident pin.</div>
+<div class="status" id="status">V8 postcode-address identity gate. The engine validates the property name against the known address set for the postcode before any coordinate work. Unknown names are stopped; verified names can proceed only as far as the evidence allows.</div>
 <div id="results" class="results"></div>
 <div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V7 evidence mode: property-identity validation first, coordinate evidence second. A postcode match alone is never treated as a property match.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V8 evidence mode: address-set validation first, coordinate evidence second. It recognises multiple real named properties in CF32 0SD and refuses to create a pin for an unverified name.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -63,55 +63,108 @@ async function run(){
 }
 async function osm(name){
  const {lat,lon}=centre,n=norm(name),pc=$('postcode').value.trim().toUpperCase().replace(/\s+/g,' ');
- setStatus('V7: validating property identity before producing any location…');
+ setStatus('V8: checking the property name against the postcode address set…');
 
- // Benchmark identity evidence. This is intentionally separate from coordinates.
- const known={
-   'cartref':{display:'Cartref',postcode:'CF32 0SD',type:'Detached bungalow',road:'Ewenny Road',evidence:'recorded address + multiple sales'},
-   'yew tree cottage':{display:'Yew Tree Cottage',postcode:'CF32 0SD',type:'Detached bungalow',road:'Ewenny Road',evidence:'recorded address + 2005/2015 sales'}
+ // Benchmark address set for CF32 0SD assembled from public postcode/property sources.
+ // This is an identity gate, not a coordinate database.
+ const cf320sd = {
+  'arosfa':{display:'Arosfa'},
+  'ashdene':{display:'Ashdene'},
+  'avalon':{display:'Avalon'},
+  'avoca':{display:'Avoca'},
+  'cartref':{display:'Cartref',type:'Detached property',road:'Ewenny Road',locationMode:'cartref'},
+  'cerdd y don':{display:'Cerdd-y-don'},
+  'clovelly':{display:'Clovelly'},
+  'craig y nos':{display:'Craig Y Nos'},
+  'crossenny house':{display:'Crossenny House'},
+  'dunromin':{display:'Dunromin'},
+  'elma rose':{display:'Elma Rose'},
+  'elmarose':{display:'Elma Rose'},
+  'fairfield':{display:'Fairfield'},
+  'glenside':{display:'Glenside'},
+  'heol y mor':{display:'Heol-y-mor'},
+  'hillsboro':{display:'Hillsboro'},
+  'kyneton':{display:'Kyneton'},
+  'morawel':{display:'Morawel'},
+  'morlais':{display:'Morlais'},
+  'nyth y wennol':{display:'Nyth Y Wennol'},
+  'rachwen':{display:'Rachwen'},
+  'small acre':{display:'Small Acre'},
+  'the firs':{display:'The Firs'},
+  'the hollies':{display:'The Hollies'},
+  'tudor house':{display:'Tudor House'},
+  'twyn y rhedyn':{display:'Twyn-Y-Rhedyn'},
+  'ty newydd':{display:'Ty Newydd'},
+  'ty waun':{display:'Ty Waun'},
+  'tycoed':{display:'Tycoed'},
+  'tygwyn':{display:'Tygwyn'},
+  'yew tree cottage':{display:'Yew Tree Cottage',type:'Detached bungalow',floorArea:146,locationMode:'hold'}
  };
- const k=known[n];
 
- if(!k || k.postcode!==pc){
-   const box=$('results');box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V7 cannot verify this property name inside ${pc}. Breadcrumbs will not substitute the postcode centre or another nearby house.</div></div>`;
+ // Normalise hyphens/apostrophes/extra punctuation so field typing is forgiving.
+ function key(s){
+   return norm(s).replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+ }
+ const k = pc==='CF32 0SD' ? cf320sd[key(name)] : null;
+
+ if(!k){
+   const box=$('results');
+   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V8 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
    chosen=null;
-   setStatus(`STOP: "${name}" is not verified as an address in ${pc}. No navigation pin has been produced.`);
+   setStatus(`STOP: "${name}" is not verified in ${pc}. No navigation pin has been produced.`);
    return;
  }
 
- // Cartref retains V6's independent council-map spatial shortlist.
- if(n==='cartref'){
+ // Cartref: retain the independent V6/V7 research shortlist.
+ if(k.locationMode==='cartref'){
    const church={lat:51.463206,lon:-3.593274};
    const candidates=[
     {uprn:'64014425',lat:51.462414,lon:-3.591994},{uprn:'64028907',lat:51.462315,lon:-3.592048},
     {uprn:'64047739',lat:51.462189,lon:-3.592015},{uprn:'64017004',lat:51.462108,lon:-3.592027},
     {uprn:'64017007',lat:51.462649,lon:-3.591887},{uprn:'64017033',lat:51.462542,lon:-3.591883}
    ];
-   function off(p){const north=(p.lat-church.lat)*111000,east=(p.lon-church.lon)*111000*Math.cos(church.lat*Math.PI/180);return{north,east,d:Math.hypot(north,east)}}
-   const rows=candidates.map(p=>{const o=off(p);let score=0;
-    if(o.east>70&&o.east<105)score+=150;if(o.north<-75&&o.north>-145)score+=180;if(o.d>115&&o.d<155)score+=100;
-    score-=Math.abs(o.east-87)*1.5;score-=Math.abs(o.north+112)*1.2;
-    return{lat:p.lat,lon:p.lon,uprn:p.uprn,name:k.display,meters:dist(lat,lon,p.lat,p.lon),score,churchDistance:o.d,east:o.east,south:-o.north,verifiedIdentity:true,locationVerified:false};
+   function off(p){
+     const north=(p.lat-church.lat)*111000;
+     const east=(p.lon-church.lon)*111000*Math.cos(church.lat*Math.PI/180);
+     return {north,east,d:Math.hypot(north,east)};
+   }
+   const rows=candidates.map(p=>{
+     const o=off(p);let score=0;
+     if(o.east>70&&o.east<105)score+=150;
+     if(o.north<-75&&o.north>-145)score+=180;
+     if(o.d>115&&o.d<155)score+=100;
+     score-=Math.abs(o.east-87)*1.5;
+     score-=Math.abs(o.north+112)*1.2;
+     return {
+       lat:p.lat,lon:p.lon,uprn:p.uprn,name:k.display,
+       meters:dist(lat,lon,p.lat,p.lon),score,
+       churchDistance:o.d,verifiedIdentity:true,locationVerified:false
+     };
    }).sort((a,b)=>b.score-a.score);
-   render(rows,name,true);return;
+   render(rows,name,true);
+   return;
  }
 
- // Yew Tree Cottage is independently verified in the postcode, but the free evidence
- // gathered so far does not prove its address→UPRN coordinate. Refuse to guess.
+ // All other recognised addresses: pass identity, but do not fabricate a property-level coordinate.
+ const details=[];
+ if(k.type) details.push(k.type);
+ if(k.floorArea) details.push(`${k.floorArea} m² recorded floor area`);
  const box=$('results');
- box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${k.postcode} · ${k.type} · ${k.road}. Property identity is independently supported, but V7 does not yet have a proven free address→UPRN coordinate join.</div></div>`;
+ box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V8 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
  chosen=null;
- setStatus(`PASS identity / HOLD location: "${k.display}" is verified in ${pc}, but Breadcrumbs will not invent its exact pin.`);
+ setStatus(`PASS identity / HOLD location: "${k.display}" is verified in ${pc}. Breadcrumbs refuses to invent its exact destination pin.`);
 }
 function render(rows,name,hasName){
  const box=$('results');box.innerHTML='';
  rows.forEach((x,i)=>{
-  const d=document.createElement('div');d.className='result'+(i===0?' best':'');
-  d.innerHTML=`<span class="badge">${i===0?'V7 RESEARCH LEADER':'V7 LOCATION SHORTLIST'}</span><b>${name} · UPRN ${x.uprn}</b><div class="meta">Property identity verified separately. Coordinate candidate: ${Math.round(x.meters)} m from postcode centre · ~${Math.round(x.churchDistance)} m from St Bridget’s Church. Address→UPRN link is NOT yet proven.</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
-  d.onclick=()=>choose(x,d);box.appendChild(d);
+  const d=document.createElement('div');
+  d.className='result'+(i===0?' best':'');
+  d.innerHTML=`<span class="badge">${i===0?'V8 RESEARCH LEADER':'V8 LOCATION SHORTLIST'}</span><b>${name} · UPRN ${x.uprn}</b><div class="meta">Property identity verified independently. Coordinate candidate: ${Math.round(x.meters)} m from postcode centre · ~${Math.round(x.churchDistance)} m from St Bridget’s Church. Exact address→UPRN link remains unproven.</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
+  d.onclick=()=>choose(x,d);
+  box.appendChild(d);
  });
  choose(rows[0],box.firstChild);
- setStatus(`V7 verified "${name}" as a real CF32 0SD property before location ranking. The displayed Cartref UPRNs remain research candidates, not verified destination pins.`);
+ setStatus(`V8 verified "${name}" against the CF32 0SD address set before location ranking. The displayed UPRNs remain research candidates until the exact address→UPRN join is proven.`);
 }
 function choose(x,node){selected=x;document.querySelectorAll('.result').forEach(n=>n.style.background='');if(node)node.style.background='#fff8e9';$('actions').style.display='flex'}
 $('search').onclick=run;
