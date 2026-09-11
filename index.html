@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Breadcrumbs V13</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Breadcrumbs V14</title>
 <style>
 :root{--ink:#17221c;--muted:#69736e;--paper:#f5f1e7;--card:#fff;--amber:#c9872f;--green:#285943;--line:#ddd6c7;--soft:#f3eee1}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--paper);color:var(--ink)}
@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V13</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V14</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">V13 authoritative-lookup ready field engine. It validates the property name + postcode first, then separates VERIFIED ADDRESS from VERIFIED DESTINATION. It never turns an unproven property coordinate into a navigation pin.</div>
+<div class="status" id="status">V14 secure-resolution client. It validates the property name + postcode first, then separates VERIFIED ADDRESS from VERIFIED DESTINATION. It never turns an unproven property coordinate into a navigation pin.</div>
 <div id="results" class="results"></div>
 <div style="margin-top:10px;font-size:13px;opacity:.72">Exact destination required for navigation.</div><div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V13 authoritative-lookup ready: field mode stays simple; the old six-candidate research is fallback evidence only. The intended production path is authoritative address lookup → UPRN → coordinate → navigation. API credentials must remain off the public GitHub page.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V14 secure client: the browser calls a same-origin backend at /api/resolve. API credentials stay server-side. Only a verified UPRN + coordinate can unlock navigation; fallback candidates never do.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -63,7 +63,7 @@ async function run(){
 }
 async function osm(name){
  const {lat,lon}=centre,n=norm(name),pc=$('postcode').value.trim().toUpperCase().replace(/\s+/g,' ');
- setStatus('V13: checking the property name against the postcode address set…');
+ setStatus('V14: checking the property name against the postcode address set…');
 
  // Benchmark address set for CF32 0SD assembled from public postcode/property sources.
  // This is an identity gate, not a coordinate database.
@@ -109,7 +109,7 @@ async function osm(name){
 
  if(!k){
    const box=$('results');
-   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V13 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
+   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V14 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
    chosen=null;
    setStatus(`STOP: "${name}" is not verified in ${pc}. No navigation pin has been produced.`);
    return;
@@ -150,7 +150,7 @@ async function osm(name){
  if(k.type) details.push(k.type);
  if(k.floorArea) details.push(`${k.floorArea} m² recorded floor area`);
  const box=$('results');
- box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V13 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
+ box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V14 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
  chosen=null;
  setStatus(`PASS identity / HOLD location: "${k.display}" is verified in ${pc}. Breadcrumbs refuses to invent its exact destination pin.`);
 }
@@ -164,19 +164,17 @@ function render(rows,name,hasName){
  const card=document.createElement('div');
  card.className='result';
  card.style.background='#fff8e9';
- card.innerHTML=`<span class="badge">V13 FIELD MODE</span><b>${name}</b>
+ card.innerHTML=`<span class="badge">V14 FIELD MODE</span><b>${name}</b>
  <div class="meta"><strong>ADDRESS VERIFIED</strong><br>
  <strong>EXACT DESTINATION NOT YET VERIFIED</strong><br><br>
- Breadcrumbs will not create a navigation pin until the property-level location is proven.<br><br><strong>NEXT RESOLUTION PATH:</strong> authoritative address lookup → UPRN → property coordinate → navigation.</div>`;
+ Breadcrumbs now attempts a secure authoritative resolution after identity verification. A navigation pin is created only when the backend returns a verified UPRN and property coordinate.</div>`;
  box.appendChild(card);
 
  const route=document.createElement('div');
  route.className='result';
  route.style.marginTop='12px';
- route.innerHTML=`<span class="badge">V13 RESOLUTION ROUTE</span><b>Authoritative lookup ready</b>
- <div class="meta">Property + postcode → trusted address lookup → UPRN → exact coordinate.<br>
- <strong>API connection:</strong> not configured in this public GitHub build.<br>
- The API key must be held behind a secure backend, never embedded in this HTML.</div>`;
+ route.innerHTML=`<span class="badge">V14 SECURE RESOLUTION</span><b id="resolverTitle">Checking authoritative service…</b>
+ <div class="meta" id="resolverText">Property + postcode → secure backend → authoritative address lookup → UPRN → exact coordinate.</div>`;
  box.appendChild(route);
 
  const details=document.createElement('details');
@@ -202,8 +200,55 @@ function render(rows,name,hasName){
  selected=null;
  $('actions').style.display='none';
  setStatus(`"${name}" is a verified address. Exact destination is not yet verified.`);
+ resolveAuthoritatively(name, 'CF32 0SD');
 }
-function choose(x,node){selected=null;$('actions').style.display='none'}
+
+async function resolveAuthoritatively(name, postcode){
+  const title=document.getElementById('resolverTitle');
+  const text=document.getElementById('resolverText');
+  try{
+    const response=await fetch('/api/resolve',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({property:name,postcode:postcode})
+    });
+    if(!response.ok) throw new Error('resolver unavailable');
+    const data=await response.json();
+
+    if(data && data.verified===true && data.uprn && Number.isFinite(Number(data.latitude)) && Number.isFinite(Number(data.longitude))){
+      const lat=Number(data.latitude), lon=Number(data.longitude);
+      selected={lat,lon,uprn:String(data.uprn),verified:true,address:data.address||name,source:data.source||'authoritative lookup'};
+      if(title) title.textContent='Exact destination verified';
+      if(text) text.innerHTML=`<strong>${selected.address}</strong><br>UPRN ${selected.uprn}<br>${lat.toFixed(6)}, ${lon.toFixed(6)}<br>Source: ${selected.source}`;
+      const status=document.querySelector('.status');
+      setStatus(`Exact destination verified for "${name}". Navigation is ready.`);
+      const actions=$('actions');
+      if(actions) actions.style.display='flex';
+      const nav=$('nav');
+      if(nav){ nav.disabled=false; nav.style.opacity='1'; nav.style.cursor='pointer'; }
+      const copy=$('copy');
+      if(copy){ copy.disabled=false; copy.style.opacity='1'; copy.style.cursor='pointer'; }
+      return true;
+    }
+
+    if(title) title.textContent='Exact destination not verified';
+    if(text) text.textContent='The authoritative service responded, but did not return a verified property-level UPRN and coordinate. Navigation remains locked.';
+  }catch(err){
+    if(title) title.textContent='Authoritative service not connected';
+    if(text) text.innerHTML='This GitHub build is ready to call <strong>/api/resolve</strong>, but no secure backend is connected here yet. Navigation remains locked.';
+  }
+  selected=null;
+  const actions=$('actions');
+  if(actions) actions.style.display='none';
+  return false;
+}
+
+function choose(x,node){
+ if(!x || x.verified!==true){ selected=null; $('actions').style.display='none'; return; }
+ selected=x;
+ $('actions').style.display='flex';
+}
+
 
 $('search').onclick=run;
 $('postcode').onkeydown=$('property').onkeydown=e=>{if(e.key==='Enter')run()};
