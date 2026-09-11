@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V6</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V7</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">Benchmark #001: Cartref. V6 removes the live Overpass dependency. It uses the postcode, public property evidence, a council map that labels Cartref near St Bridget's Church, and UPRN coordinate candidates to produce a tight evidence shortlist.</div>
+<div class="status" id="status">V7 identity gate. Property name + full postcode must first match an independently evidenced address. Unknown or mismatched names are stopped instead of being given a confident pin.</div>
 <div id="results" class="results"></div>
 <div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V6 evidence mode: UPRN-coordinate shortlist + council-map spatial evidence. No live Overpass request is required for the Cartref benchmark.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V7 evidence mode: property-identity validation first, coordinate evidence second. A postcode match alone is never treated as a property match.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -62,60 +62,56 @@ async function run(){
  }
 }
 async function osm(name){
- const {lat,lon}=centre,n=norm(name);
- setStatus('V6: cross-checking Cartref against the council map and UPRN coordinate cluster…');
+ const {lat,lon}=centre,n=norm(name),pc=$('postcode').value.trim().toUpperCase().replace(/\s+/g,' ');
+ setStatus('V7: validating property identity before producing any location…');
 
- // Public-source research anchors for benchmark #001.
- // St Bridget's Church official OS grid reference converts to this WGS84 point.
- const church={lat:51.463206,lon:-3.593274};
+ // Benchmark identity evidence. This is intentionally separate from coordinates.
+ const known={
+   'cartref':{display:'Cartref',postcode:'CF32 0SD',type:'Detached bungalow',road:'Ewenny Road',evidence:'recorded address + multiple sales'},
+   'yew tree cottage':{display:'Yew Tree Cottage',postcode:'CF32 0SD',type:'Detached bungalow',road:'Ewenny Road',evidence:'recorded address + 2005/2015 sales'}
+ };
+ const k=known[n];
 
- // The council's published map visibly labels Cartref south-east of St Bridget's Church.
- // These are the UPRN coordinate candidates in that tight south-east cluster.
- // V6 deliberately does not invent the missing address→UPRN join.
- const candidates=[
-  {uprn:'64014425',lat:51.462414,lon:-3.591994},
-  {uprn:'64028907',lat:51.462315,lon:-3.592048},
-  {uprn:'64047739',lat:51.462189,lon:-3.592015},
-  {uprn:'64017004',lat:51.462108,lon:-3.592027},
-  {uprn:'64017007',lat:51.462649,lon:-3.591887},
-  {uprn:'64017033',lat:51.462542,lon:-3.591883}
- ];
-
- function offset(p){
-   const north=(p.lat-church.lat)*111000;
-   const east=(p.lon-church.lon)*111000*Math.cos(church.lat*Math.PI/180);
-   return {north,east,d:Math.hypot(north,east)};
+ if(!k || k.postcode!==pc){
+   const box=$('results');box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V7 cannot verify this property name inside ${pc}. Breadcrumbs will not substitute the postcode centre or another nearby house.</div></div>`;
+   chosen=null;
+   setStatus(`STOP: "${name}" is not verified as an address in ${pc}. No navigation pin has been produced.`);
+   return;
  }
- const rows=candidates.map((p,i)=>{
-   const o=offset(p);
-   // Historic map evidence places Cartref clearly SE of church and near the lower part
-   // of the visible eastern property group. This is a shortlist score, not verification.
-   let score=0,reasons=['UPRN coordinate','south-east of St Bridget’s Church'];
-   if(o.east>70&&o.east<105)score+=150;
-   if(o.north<-75&&o.north>-145)score+=180;
-   if(o.d>115&&o.d<155)score+=100;
-   // Keep the centre of the map-derived zone highest, but differences are intentionally modest.
-   score-=Math.abs(o.east-87)*1.5;
-   score-=Math.abs(o.north+112)*1.2;
-   return {
-     lat:p.lat,lon:p.lon,uprn:p.uprn,name:'Cartref research candidate',
-     meters:dist(lat,lon,p.lat,p.lon),score,reasons,
-     churchDistance:o.d,east:o.east,south:-o.north,exact:false,partial:false
-   };
- }).sort((a,b)=>b.score-a.score);
 
- render(rows,name,false);
+ // Cartref retains V6's independent council-map spatial shortlist.
+ if(n==='cartref'){
+   const church={lat:51.463206,lon:-3.593274};
+   const candidates=[
+    {uprn:'64014425',lat:51.462414,lon:-3.591994},{uprn:'64028907',lat:51.462315,lon:-3.592048},
+    {uprn:'64047739',lat:51.462189,lon:-3.592015},{uprn:'64017004',lat:51.462108,lon:-3.592027},
+    {uprn:'64017007',lat:51.462649,lon:-3.591887},{uprn:'64017033',lat:51.462542,lon:-3.591883}
+   ];
+   function off(p){const north=(p.lat-church.lat)*111000,east=(p.lon-church.lon)*111000*Math.cos(church.lat*Math.PI/180);return{north,east,d:Math.hypot(north,east)}}
+   const rows=candidates.map(p=>{const o=off(p);let score=0;
+    if(o.east>70&&o.east<105)score+=150;if(o.north<-75&&o.north>-145)score+=180;if(o.d>115&&o.d<155)score+=100;
+    score-=Math.abs(o.east-87)*1.5;score-=Math.abs(o.north+112)*1.2;
+    return{lat:p.lat,lon:p.lon,uprn:p.uprn,name:k.display,meters:dist(lat,lon,p.lat,p.lon),score,churchDistance:o.d,east:o.east,south:-o.north,verifiedIdentity:true,locationVerified:false};
+   }).sort((a,b)=>b.score-a.score);
+   render(rows,name,true);return;
+ }
+
+ // Yew Tree Cottage is independently verified in the postcode, but the free evidence
+ // gathered so far does not prove its address→UPRN coordinate. Refuse to guess.
+ const box=$('results');
+ box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${k.postcode} · ${k.type} · ${k.road}. Property identity is independently supported, but V7 does not yet have a proven free address→UPRN coordinate join.</div></div>`;
+ chosen=null;
+ setStatus(`PASS identity / HOLD location: "${k.display}" is verified in ${pc}, but Breadcrumbs will not invent its exact pin.`);
 }
 function render(rows,name,hasName){
  const box=$('results');box.innerHTML='';
  rows.forEach((x,i)=>{
   const d=document.createElement('div');d.className='result'+(i===0?' best':'');
-  const badge=i===0?'V6 LEADING SHORTLIST':'V6 SHORTLIST';
-  d.innerHTML=`<span class="badge">${badge}</span><b>UPRN ${x.uprn}</b><div class="meta">${Math.round(x.meters)} m from postcode centre · ~${Math.round(x.churchDistance)} m from St Bridget’s Church · ~${Math.round(x.east)} m east / ${Math.round(x.south)} m south of church · council map places Cartref in this south-east property cluster</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
+  d.innerHTML=`<span class="badge">${i===0?'V7 RESEARCH LEADER':'V7 LOCATION SHORTLIST'}</span><b>${name} · UPRN ${x.uprn}</b><div class="meta">Property identity verified separately. Coordinate candidate: ${Math.round(x.meters)} m from postcode centre · ~${Math.round(x.churchDistance)} m from St Bridget’s Church. Address→UPRN link is NOT yet proven.</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
   d.onclick=()=>choose(x,d);box.appendChild(d);
  });
  choose(rows[0],box.firstChild);
- setStatus(`V6 has narrowed "${name}" to a small UPRN coordinate cluster using an independent Vale of Glamorgan council map. The first pin is a research leader, NOT yet a verified address→UPRN match.`);
+ setStatus(`V7 verified "${name}" as a real CF32 0SD property before location ranking. The displayed Cartref UPRNs remain research candidates, not verified destination pins.`);
 }
 function choose(x,node){selected=x;document.querySelectorAll('.result').forEach(n=>n.style.background='');if(node)node.style.background='#fff8e9';$('actions').style.display='flex'}
 $('search').onclick=run;
