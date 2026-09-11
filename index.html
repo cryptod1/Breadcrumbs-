@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V3</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V4</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">Benchmark #001: Cartref. V3 adds a second evidence layer: known property type/size and road context. The postcode centre is now only a search origin — never the answer by itself.</div>
+<div class="status" id="status">Benchmark #001: Cartref. V4 first removes non-residential map features, then ranks only plausible homes using property-name evidence, residential building type, footprint and Ewenny Road context.</div>
 <div id="results" class="results"></div>
 <div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. Exact-match confidence only appears when the map data itself contains matching property-name evidence. Otherwise Breadcrumbs reports uncertainty instead of inventing precision.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V4 filters non-residential features before ranking. Exact-match confidence still requires real property-name evidence; otherwise Breadcrumbs reports uncertainty instead of inventing precision.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -63,93 +63,157 @@ async function run(){
 }
 async function osm(name){
  const {lat,lon}=centre, n=norm(name);
- const q=`[out:json][timeout:22];(
-   nwr["name"](around:1000,${lat},${lon});
-   nwr["addr:housename"](around:1000,${lat},${lon});
-   way["building"](around:700,${lat},${lon});
-   nwr["entrance"](around:700,${lat},${lon});
-   way["highway"]["name"](around:800,${lat},${lon});
+ const q=`[out:json][timeout:24];(
+   nwr["name"](around:1100,${lat},${lon});
+   nwr["addr:housename"](around:1100,${lat},${lon});
+   way["building"](around:750,${lat},${lon});
+   nwr["entrance"](around:750,${lat},${lon});
+   way["highway"]["name"](around:900,${lat},${lon});
  );out center tags geom;`;
 
  const servers=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
  let j=null,errors=[];
  for(const server of servers){
    try{
-     setStatus('Building V3 evidence map: names, footprints, entrances and roads…');
-     const c=new AbortController(),timer=setTimeout(()=>c.abort(),18000);
+     setStatus('V4: building a residential-only evidence map…');
+     const c=new AbortController(),timer=setTimeout(()=>c.abort(),19000);
      const r=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q),signal:c.signal});
-     clearTimeout(timer); if(!r.ok)throw Error('HTTP '+r.status);
-     j=await r.json(); if(j&&Array.isArray(j.elements))break; throw Error('invalid response');
-   }catch(err){errors.push(err.name==='AbortError'?'timeout':(err.message||'network failure'));j=null}
+     clearTimeout(timer);
+     if(!r.ok) throw Error('HTTP '+r.status);
+     j=await r.json();
+     if(j&&Array.isArray(j.elements)) break;
+     throw Error('invalid response');
+   }catch(err){
+     errors.push(err.name==='AbortError'?'timeout':(err.message||'network failure'));
+     j=null;
+   }
  }
  if(!j){setStatus('Free map servers unavailable: '+errors.join(' / '));return}
 
  const roads=j.elements.filter(x=>x.tags&&x.tags.highway&&x.tags.name);
  const roadPts=[];
- for(const r of roads) if(norm(r.tags.name)===norm(benchmark.road)){
-   if(r.geometry) for(const p of r.geometry) roadPts.push([p.lat,p.lon]);
-   else if(r.center) roadPts.push([r.center.lat,r.center.lon]);
+ for(const r of roads){
+   if(norm(r.tags.name)===norm(benchmark.road)){
+     if(r.geometry) for(const p of r.geometry) roadPts.push([p.lat,p.lon]);
+     else if(r.center) roadPts.push([r.center.lat,r.center.lon]);
+   }
  }
  function nearestRoad(la,lo){
    if(!roadPts.length)return null;
-   let m=Infinity;for(const p of roadPts)m=Math.min(m,dist(la,lo,p[0],p[1]));return m;
+   let m=Infinity;
+   for(const p of roadPts)m=Math.min(m,dist(la,lo,p[0],p[1]));
+   return m;
  }
  function polyArea(g){
    if(!g||g.length<3)return null;
-   const lat0=g.reduce((a,p)=>a+p.lat,0)/g.length, kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
-   let sum=0;for(let i=0;i<g.length;i++){const a=g[i],b=g[(i+1)%g.length];sum+=(a.lon*kx)*(b.lat*ky)-(b.lon*kx)*(a.lat*ky)}
+   const lat0=g.reduce((a,p)=>a+p.lat,0)/g.length;
+   const kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+   let sum=0;
+   for(let i=0;i<g.length;i++){
+     const a=g[i],b=g[(i+1)%g.length];
+     sum+=(a.lon*kx)*(b.lat*ky)-(b.lon*kx)*(a.lat*ky);
+   }
    return Math.abs(sum)/2;
  }
+ function nonResidential(t){
+   const building=norm(t.building);
+   const badBuilding=['commercial','retail','industrial','warehouse','school','church','chapel','civic','public','hospital','office','service','transformer_tower','train_station','transportation'];
+   if(badBuilding.includes(building)) return true;
+   if(t.shop||t.office||t.tourism) return true;
+   if(t.power) return true;
+   if(t.amenity && !['shelter'].includes(norm(t.amenity))) return true;
+   if(t.leisure && norm(t.leisure)!=='garden') return true;
+   if(t.man_made && ['substation','utility_pole','mast','tower'].includes(norm(t.man_made))) return true;
+   if(t.historic && !t.building) return true;
+   return false;
+ }
+ function looksResidential(t){
+   const b=norm(t.building);
+   if(['house','detached','bungalow','residential','semidetached_house','terrace','yes'].includes(b)) return true;
+   if(t['addr:housename']||t['addr:housenumber']) return true;
+   return false;
+ }
 
- let rows=[],seen=new Set();
+ let rows=[],seen=new Set(),excluded=0;
  for(const el of j.elements){
-   const t=el.tags||{}; if(t.highway)continue;
-   const la=el.lat??el.center?.lat,lo=el.lon??el.center?.lon;if(la==null||lo==null)continue;
-   const key=la.toFixed(6)+','+lo.toFixed(6);if(seen.has(key))continue;seen.add(key);
+   const t=el.tags||{};
+   if(t.highway) continue;
+   const la=el.lat??el.center?.lat,lo=el.lon??el.center?.lon;
+   if(la==null||lo==null)continue;
+   if(nonResidential(t)){excluded++;continue;}
+   if(!looksResidential(t) && !t.entrance)continue;
+
+   const key=la.toFixed(6)+','+lo.toFixed(6);
+   if(seen.has(key))continue;
+   seen.add(key);
+
    const nm=label(t),nn=norm(nm),meters=dist(lat,lon,la,lo),area=polyArea(el.geometry),roadDist=nearestRoad(la,lo);
-   const exact=nn===n, partial=!exact&&nn.length>2&&(nn.includes(n)||n.includes(nn));
+   const exact=nn===n,partial=!exact&&nn.length>2&&(nn.includes(n)||n.includes(nn));
    let score=0,reasons=[];
-   if(exact){score+=2000;reasons.push('exact mapped property name')}
-   else if(partial){score+=500;reasons.push('partial property-name match')}
-   if(norm(t['addr:housename'])===n){score+=900;reasons.push('address housename match')}
-   if(t.building){score+=60;reasons.push('building footprint')}
-   if(t.entrance){score+=35;reasons.push('mapped entrance')}
+
+   if(exact){score+=3000;reasons.push('exact mapped property name')}
+   else if(partial){score+=700;reasons.push('partial property-name match')}
+   if(norm(t['addr:housename'])===n){score+=1200;reasons.push('address housename match')}
+
+   const b=norm(t.building);
+   if(['house','detached','bungalow','residential','semidetached_house'].includes(b)){
+     score+=240;reasons.push('residential building type');
+   } else if(b==='yes'){
+     score+=100;reasons.push('unclassified building footprint');
+   }
+
    if(area){
-     // EPC floor area is not footprint area, so use it only as soft evidence.
-     const ratio=Math.min(area,benchmark.floorArea)/Math.max(area,benchmark.floorArea);
-     score+=ratio*120;
-     if(area>=75&&area<=175)reasons.push('footprint plausible for 131 m² bungalow');
+     // 131 m² is EPC floor area, not footprint. Use broad plausibility only.
+     if(area>=70&&area<=180){score+=210;reasons.push('plausible bungalow footprint');}
+     else if(area>=45&&area<=240){score+=90;reasons.push('plausible house footprint');}
+     else if(area>350){score-=180;reasons.push('footprint unusually large for target');}
    }
+
    if(roadDist!=null){
-     score+=Math.max(0,180-roadDist*2.2);
-     if(roadDist<55)reasons.push('close to Ewenny Road');
+     if(roadDist<=15){score+=260;reasons.push('very close to Ewenny Road');}
+     else if(roadDist<=35){score+=210;reasons.push('close to Ewenny Road');}
+     else if(roadDist<=70){score+=100;reasons.push('within Ewenny Road corridor');}
+     else score-=Math.min(140,(roadDist-70)*1.2);
    }
-   // Centroid distance is deliberately weak in V3.
-   score+=Math.max(0,25-meters/25);
+
+   if(t.entrance){score+=45;reasons.push('mapped entrance');}
+
+   // Postcode centroid is only a tiny tie-breaker.
+   score+=Math.max(0,8-meters/100);
+
    rows.push({lat:la,lon:lo,name:nm,t,meters,score,exact,partial,reasons,area,roadDist});
  }
+
  rows.sort((a,b)=>b.score-a.score);
  const named=rows.filter(x=>x.exact||x.partial);
+ window.v4Excluded=excluded;
  render(named.length?named:rows.slice(0,10),name,!!named.length);
 }
 function render(rows,name,hasName){
  const box=$('results');box.innerHTML='';
  if(!rows.length){
-   box.innerHTML='<div class="result"><b>No mapped candidate</b><div class="meta">Free map data did not expose a usable building here.</div></div>';
-   return setStatus('No candidate found. Breadcrumbs has deliberately not substituted the postcode centre.');
+   box.innerHTML='<div class="result"><b>No plausible residential candidate</b><div class="meta">V4 removed non-residential map objects and found no usable home footprint.</div></div>';
+   return setStatus('V4 found no plausible residential candidate. It will not fall back to a shop, school, substation or postcode centre.');
  }
- rows.slice(0,8).forEach((x,i)=>{
-   const d=document.createElement('div');d.className='result'+(i===0?' best':'');
-   const confidence=x.exact?'HIGH NAME MATCH':x.partial?'PARTIAL NAME MATCH':(i===0?'V3 LEADING CANDIDATE':'UNVERIFIED CANDIDATE');
+ rows.slice(0,10).forEach((x,i)=>{
+   const d=document.createElement('div');
+   d.className='result'+(i===0?' best':'');
+   const confidence=x.exact?'HIGH NAME MATCH':x.partial?'PARTIAL NAME MATCH':(i===0?'V4 RESIDENTIAL LEADER':'RESIDENTIAL CANDIDATE');
    const area=x.area?` · footprint ~${Math.round(x.area)} m²`:'';
    const rd=x.roadDist!=null?` · ~${Math.round(x.roadDist)} m from Ewenny Road`:'';
    d.innerHTML=`<span class="badge">${confidence}</span><b>${x.name}</b><div class="meta">${Math.round(x.meters)} m from postcode centre${area}${rd}${x.reasons.length?' · '+x.reasons.join(', '):''}</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
-   d.onclick=()=>choose(x,d);box.appendChild(d);
+   d.onclick=()=>choose(x,d);
+   box.appendChild(d);
  });
  choose(rows[0],box.firstChild);
- if(rows[0].exact)setStatus(`Strong result: free map data contains an exact mapped name match for "${name}". Verify it against the real property before trusting navigation.`);
- else if(hasName)setStatus(`Breadcrumbs found name-related evidence for "${name}", but not a clean exact match. Treat the pin as provisional.`);
- else setStatus(`No direct "${name}" map label exists, so V3 has ranked candidates using independent clues: detached-property footprint, the known 131 m² floor-area range, Ewenny Road proximity and mapped entrances. The leader is still a hypothesis, not a verified answer.`);
+ const excluded=window.v4Excluded||0;
+ if(rows[0].exact){
+   setStatus(`Strong result: free map data directly matches "${name}". V4 excluded ${excluded} non-residential objects before ranking.`);
+ }else if(hasName){
+   setStatus(`V4 found name-related residential evidence for "${name}". ${excluded} non-residential objects were discarded.`);
+ }else{
+   setStatus(`No direct "${name}" map label exists. V4 discarded ${excluded} non-residential objects and ranked only plausible homes. The leader is still a hypothesis, not a verified Cartref pin.`);
+ }
 }
 function choose(x,node){selected=x;document.querySelectorAll('.result').forEach(n=>n.style.background='');if(node)node.style.background='#fff8e9';$('actions').style.display='flex'}
 $('search').onclick=run;
