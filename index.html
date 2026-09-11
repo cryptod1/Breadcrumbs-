@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Breadcrumbs V2</title>
+<style>
+:root{--ink:#17221c;--muted:#69736e;--paper:#f5f1e7;--card:#fff;--amber:#c9872f;--green:#285943;--line:#ddd6c7;--soft:#f3eee1}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--paper);color:var(--ink)}
+.wrap{max-width:640px;margin:auto;padding:22px 16px 42px}.brand{display:flex;gap:12px;align-items:center;margin:8px 0 22px}
+.pin{width:44px;height:44px;border-radius:50% 50% 50% 8px;background:var(--amber);transform:rotate(-45deg);position:relative}.pin:after{content:"";position:absolute;inset:13px;border:4px solid #fff;border-radius:50%}
+h1{margin:0;font-size:29px;letter-spacing:-1px}.tag{font-size:11px;font-weight:800;letter-spacing:.14em;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:0 8px 24px #0000000c}
+label{display:block;font-size:11px;font-weight:900;letter-spacing:.08em;margin:0 0 7px}.field{margin-bottom:14px}
+input{width:100%;padding:14px;border:1px solid #cbc4b5;border-radius:12px;font-size:17px;background:#fff}
+button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:15px;background:var(--green);color:#fff;width:100%}
+.status{margin-top:14px;padding:12px;border-radius:12px;background:var(--soft);font-size:14px;color:var(--muted);line-height:1.45}
+.results{display:grid;gap:9px;margin-top:14px}.result{border:1px solid var(--line);border-radius:14px;padding:13px;background:#fff;cursor:pointer}.result.best{border:2px solid var(--amber)}
+.result b{display:block;margin-bottom:4px}.meta{font-size:12px;color:var(--muted);line-height:1.45}.coords{font-family:ui-monospace,monospace;font-size:12px;margin-top:5px}
+.badge{display:inline-block;padding:4px 7px;border-radius:999px;background:#eee8d9;font-size:10px;font-weight:900;letter-spacing:.04em;margin-bottom:7px}
+.actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
+.foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
+</style></head><body><main class="wrap">
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V2</div></div></div>
+<section class="card">
+<div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
+<div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
+<button id="search">Pinpoint property</button>
+<div class="status" id="status">Benchmark #001 is loaded. V2 searches mapped property names first, then nearby buildings and entrances. It will not pretend the postcode centre is the property.</div>
+<div id="results" class="results"></div>
+<div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
+</section>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. Exact-match confidence only appears when the map data itself contains matching property-name evidence. Otherwise Breadcrumbs reports uncertainty instead of inventing precision.</div>
+</main><script>
+const $=id=>document.getElementById(id); let selected=null, centre=null;
+const setStatus=t=>$('status').textContent=t;
+function norm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'')}
+function dist(a,b,c,d){const R=6371000,p=Math.PI/180,x=(d-b)*p*Math.cos((a+c)*p/2),y=(c-a)*p;return Math.sqrt(x*x+y*y)*R}
+function label(t){return t.name||t['addr:housename']||t['addr:housenumber']||t['addr:street']||'Mapped building'}
+async function run(){
+ const name=$('property').value.trim(), pc=$('postcode').value.trim().toUpperCase();
+ if(!name)return setStatus('Enter a property name.');
+ if(!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(pc))return setStatus('Enter a complete UK postcode.');
+ $('results').innerHTML='';$('actions').style.display='none';selected=null;
+
+ // Benchmark #001 is embedded so opening the HTML directly on Android does not
+ // depend on a postcode API request before we can test the accuracy engine.
+ if(pc.replace(/\s+/g,'')==='CF320SD'){
+   centre={lat:51.460777,lon:-3.592702};
+   setStatus('Benchmark area loaded. Searching free map servers for property-name evidence…');
+   return await osm(name);
+ }
+
+ try{
+   setStatus('Establishing postcode search area…');
+   let r=await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(pc));
+   if(!r.ok) throw Error('postcode service returned '+r.status);
+   let j=await r.json();
+   if(!j.result)throw Error('postcode not found');
+   centre={lat:j.result.latitude,lon:j.result.longitude};
+   setStatus('Postcode found. Searching free map servers for property-name evidence…');
+   await osm(name);
+ }catch(e){
+   setStatus('Postcode lookup could not run from this local file. Cartref CF32 0SD will still work as Benchmark #001. Technical detail: '+e.message);
+ }
+}
+async function osm(name){
+ const {lat,lon}=centre, n=norm(name);
+ const q=`[out:json][timeout:18];(nwr["name"](around:900,${lat},${lon});nwr["addr:housename"](around:900,${lat},${lon});nwr["building"](around:600,${lat},${lon});nwr["entrance"](around:600,${lat},${lon}););out center tags;`;
+
+ const servers=[
+   'https://overpass.private.coffee/api/interpreter',
+   'https://overpass-api.de/api/interpreter'
+ ];
+ let j=null, errors=[];
+ for(const server of servers){
+   try{
+     setStatus('Searching mapped property data…');
+     const controller=new AbortController();
+     const timer=setTimeout(()=>controller.abort(),16000);
+     const r=await fetch(server,{
+       method:'POST',
+       headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+       body:'data='+encodeURIComponent(q),
+       signal:controller.signal
+     });
+     clearTimeout(timer);
+     if(!r.ok) throw Error('HTTP '+r.status);
+     j=await r.json();
+     if(j&&Array.isArray(j.elements)) break;
+     throw Error('invalid response');
+   }catch(e){
+     errors.push((e.name==='AbortError'?'timeout':e.message||'network failure'));
+     j=null;
+   }
+ }
+ if(!j){
+   setStatus('Free map servers could not be reached from this browser/file. This is a connection/CORS issue, not a failed Cartref match. Next step would be running Breadcrumbs from GitHub Pages. ('+errors.join(' / ')+')');
+   return;
+ }
+
+ let seen=new Set(),rows=[];
+ for(const e of j.elements){
+   const la=e.lat??e.center?.lat,lo=e.lon??e.center?.lon;if(la==null||lo==null)continue;
+   const key=la.toFixed(6)+','+lo.toFixed(6);if(seen.has(key))continue;seen.add(key);
+   const t=e.tags||{}, nm=label(t), nn=norm(nm), meters=dist(lat,lon,la,lo);
+   let exact=(nn===n), partial=(!exact&&(nn.includes(n)||n.includes(nn))&&nn.length>2), score=0, reasons=[];
+   if(exact){score+=1000;reasons.push('exact property-name map match')}
+   else if(partial){score+=350;reasons.push('partial property-name match')}
+   if(norm(t['addr:housename'])===n){score+=500;reasons.push('address housename match')}
+   if(t.entrance){score+=55;reasons.push('mapped entrance')}
+   if(t.building){score+=25;reasons.push('mapped building')}
+   score+=Math.max(0,80-meters/8);
+   rows.push({lat:la,lon:lo,name:nm,t,meters,score,exact,partial,reasons});
+ }
+ rows.sort((a,b)=>b.score-a.score);
+ const named=rows.filter(x=>x.exact||x.partial), output=(named.length?named:rows.slice(0,8));
+ render(output,name,!!named.length);
+}
+function render(rows,name,hasName){
+ const box=$('results');box.innerHTML='';
+ if(!rows.length){
+   box.innerHTML='<div class="result"><b>No mapped candidate</b><div class="meta">Free map data did not expose a usable building here.</div></div>';
+   return setStatus('No candidate found. Breadcrumbs has deliberately not substituted the postcode centre.');
+ }
+ rows.slice(0,8).forEach((x,i)=>{
+   const d=document.createElement('div');d.className='result'+(i===0?' best':'');
+   const confidence=x.exact?'HIGH NAME MATCH':x.partial?'PARTIAL NAME MATCH':'UNVERIFIED BUILDING';
+   d.innerHTML=`<span class="badge">${confidence}</span><b>${x.name}</b><div class="meta">${Math.round(x.meters)} m from postcode centre${x.reasons.length?' · '+x.reasons.join(', '):''}</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
+   d.onclick=()=>choose(x,d);box.appendChild(d);
+ });
+ choose(rows[0],box.firstChild);
+ if(rows[0].exact)setStatus(`Strong result: free map data contains an exact mapped name match for "${name}". Verify it against the real property before trusting navigation.`);
+ else if(hasName)setStatus(`Breadcrumbs found name-related evidence for "${name}", but not a clean exact match. Treat the pin as provisional.`);
+ else setStatus(`No property-name tag for "${name}" was found in the free map data. These are only nearby building candidates — Breadcrumbs is refusing to call one "the answer".`);
+}
+function choose(x,node){selected=x;document.querySelectorAll('.result').forEach(n=>n.style.background='');if(node)node.style.background='#fff8e9';$('actions').style.display='flex'}
+$('search').onclick=run;
+$('postcode').onkeydown=$('property').onkeydown=e=>{if(e.key==='Enter')run()};
+$('nav').onclick=()=>{if(selected)location.href=`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lon}`};
+$('copy').onclick=async()=>{if(!selected)return;const t=`${selected.lat.toFixed(6)}, ${selected.lon.toFixed(6)}`;try{await navigator.clipboard.writeText(t)}catch(e){}setStatus('Selected coordinates: '+t)};
+</script></body></html>
