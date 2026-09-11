@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Breadcrumbs V14</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Breadcrumbs V15</title>
 <style>
 :root{--ink:#17221c;--muted:#69736e;--paper:#f5f1e7;--card:#fff;--amber:#c9872f;--green:#285943;--line:#ddd6c7;--soft:#f3eee1}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--paper);color:var(--ink)}
@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V14</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V15</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">V14 secure-resolution client. It validates the property name + postcode first, then separates VERIFIED ADDRESS from VERIFIED DESTINATION. It never turns an unproven property coordinate into a navigation pin.</div>
+<div class="status" id="status">V15 secure authoritative resolver client. It validates the property name + postcode first, then separates VERIFIED ADDRESS from VERIFIED DESTINATION. It never turns an unproven property coordinate into a navigation pin.</div>
 <div id="results" class="results"></div>
 <div style="margin-top:10px;font-size:13px;opacity:.72">Exact destination required for navigation.</div><div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V14 secure client: the browser calls a same-origin backend at /api/resolve. API credentials stay server-side. Only a verified UPRN + coordinate can unlock navigation; fallback candidates never do.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V15 secure resolver architecture: GitHub Pages calls a separate serverless endpoint. The OS API key stays server-side. Only one uniquely matched address with a UPRN + WGS84 coordinate unlocks navigation.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -63,7 +63,7 @@ async function run(){
 }
 async function osm(name){
  const {lat,lon}=centre,n=norm(name),pc=$('postcode').value.trim().toUpperCase().replace(/\s+/g,' ');
- setStatus('V14: checking the property name against the postcode address set…');
+ setStatus('V15: checking the property name against the postcode address set…');
 
  // Benchmark address set for CF32 0SD assembled from public postcode/property sources.
  // This is an identity gate, not a coordinate database.
@@ -109,7 +109,7 @@ async function osm(name){
 
  if(!k){
    const box=$('results');
-   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V14 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
+   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V15 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
    chosen=null;
    setStatus(`STOP: "${name}" is not verified in ${pc}. No navigation pin has been produced.`);
    return;
@@ -150,7 +150,7 @@ async function osm(name){
  if(k.type) details.push(k.type);
  if(k.floorArea) details.push(`${k.floorArea} m² recorded floor area`);
  const box=$('results');
- box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V14 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
+ box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V15 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
  chosen=null;
  setStatus(`PASS identity / HOLD location: "${k.display}" is verified in ${pc}. Breadcrumbs refuses to invent its exact destination pin.`);
 }
@@ -164,7 +164,7 @@ function render(rows,name,hasName){
  const card=document.createElement('div');
  card.className='result';
  card.style.background='#fff8e9';
- card.innerHTML=`<span class="badge">V14 FIELD MODE</span><b>${name}</b>
+ card.innerHTML=`<span class="badge">V15 FIELD MODE</span><b>${name}</b>
  <div class="meta"><strong>ADDRESS VERIFIED</strong><br>
  <strong>EXACT DESTINATION NOT YET VERIFIED</strong><br><br>
  Breadcrumbs now attempts a secure authoritative resolution after identity verification. A navigation pin is created only when the backend returns a verified UPRN and property coordinate.</div>`;
@@ -173,7 +173,7 @@ function render(rows,name,hasName){
  const route=document.createElement('div');
  route.className='result';
  route.style.marginTop='12px';
- route.innerHTML=`<span class="badge">V14 SECURE RESOLUTION</span><b id="resolverTitle">Checking authoritative service…</b>
+ route.innerHTML=`<span class="badge">V15 SECURE RESOLUTION</span><b id="resolverTitle">Checking authoritative service…</b>
  <div class="meta" id="resolverText">Property + postcode → secure backend → authoritative address lookup → UPRN → exact coordinate.</div>`;
  box.appendChild(route);
 
@@ -203,11 +203,14 @@ function render(rows,name,hasName){
  resolveAuthoritatively(name, 'CF32 0SD');
 }
 
+const RESOLVER_URL = 'https://YOUR-WORKER.workers.dev/api/resolve';
+
 async function resolveAuthoritatively(name, postcode){
   const title=document.getElementById('resolverTitle');
   const text=document.getElementById('resolverText');
   try{
-    const response=await fetch('/api/resolve',{
+    if(RESOLVER_URL.includes('YOUR-WORKER')) throw new Error('resolver not configured');
+    const response=await fetch(RESOLVER_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({property:name,postcode:postcode})
@@ -235,7 +238,7 @@ async function resolveAuthoritatively(name, postcode){
     if(text) text.textContent='The authoritative service responded, but did not return a verified property-level UPRN and coordinate. Navigation remains locked.';
   }catch(err){
     if(title) title.textContent='Authoritative service not connected';
-    if(text) text.innerHTML='This GitHub build is ready to call <strong>/api/resolve</strong>, but no secure backend is connected here yet. Navigation remains locked.';
+    if(text) text.innerHTML='V15 is ready to call the secure resolver, but its deployed URL has not been added yet. Navigation remains locked.';
   }
   selected=null;
   const actions=$('actions');
