@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V8</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V9</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">V8 postcode-address identity gate. The engine validates the property name against the known address set for the postcode before any coordinate work. Unknown names are stopped; verified names can proceed only as far as the evidence allows.</div>
+<div class="status" id="status">V9 blind field-test engine. It validates the property name + postcode first, then separates VERIFIED ADDRESS from VERIFIED DESTINATION. It never turns an unproven property coordinate into a navigation pin.</div>
 <div id="results" class="results"></div>
 <div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V8 evidence mode: address-set validation first, coordinate evidence second. It recognises multiple real named properties in CF32 0SD and refuses to create a pin for an unverified name.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V9 evidence mode: identity confidence and destination confidence are separate. Verified address does not mean verified pin.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -63,7 +63,7 @@ async function run(){
 }
 async function osm(name){
  const {lat,lon}=centre,n=norm(name),pc=$('postcode').value.trim().toUpperCase().replace(/\s+/g,' ');
- setStatus('V8: checking the property name against the postcode address set…');
+ setStatus('V9: checking the property name against the postcode address set…');
 
  // Benchmark address set for CF32 0SD assembled from public postcode/property sources.
  // This is an identity gate, not a coordinate database.
@@ -109,7 +109,7 @@ async function osm(name){
 
  if(!k){
    const box=$('results');
-   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V8 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
+   box.innerHTML=`<div class="result"><span class="badge">IDENTITY NOT VERIFIED</span><b>${name}</b><div class="meta">V9 cannot verify this property name inside ${pc}. It will not substitute the postcode centre, a nearby landmark or another house.</div></div>`;
    chosen=null;
    setStatus(`STOP: "${name}" is not verified in ${pc}. No navigation pin has been produced.`);
    return;
@@ -150,7 +150,7 @@ async function osm(name){
  if(k.type) details.push(k.type);
  if(k.floorArea) details.push(`${k.floorArea} m² recorded floor area`);
  const box=$('results');
- box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V8 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
+ box.innerHTML=`<div class="result best"><span class="badge">ADDRESS VERIFIED</span><b>${k.display}</b><div class="meta">${pc}${details.length?' · '+details.join(' · '):''}. V9 recognises this as a genuine address in the postcode, but the free evidence collected so far does not prove its exact address→UPRN coordinate.</div></div>`;
  chosen=null;
  setStatus(`PASS identity / HOLD location: "${k.display}" is verified in ${pc}. Breadcrumbs refuses to invent its exact destination pin.`);
 }
@@ -159,12 +159,12 @@ function render(rows,name,hasName){
  rows.forEach((x,i)=>{
   const d=document.createElement('div');
   d.className='result'+(i===0?' best':'');
-  d.innerHTML=`<span class="badge">${i===0?'V8 RESEARCH LEADER':'V8 LOCATION SHORTLIST'}</span><b>${name} · UPRN ${x.uprn}</b><div class="meta">Property identity verified independently. Coordinate candidate: ${Math.round(x.meters)} m from postcode centre · ~${Math.round(x.churchDistance)} m from St Bridget’s Church. Exact address→UPRN link remains unproven.</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
+  d.innerHTML=`<span class="badge">${i===0?'V9 RESEARCH LEADER':'V9 LOCATION SHORTLIST'}</span><b>${name} · UPRN ${x.uprn}</b><div class="meta">IDENTITY: VERIFIED · DESTINATION: RESEARCH ONLY.<br>Coordinate candidate: ${Math.round(x.meters)} m from postcode centre · ~${Math.round(x.churchDistance)} m from St Bridget’s Church. Exact address→UPRN link remains unproven; do not treat this as a verified destination.</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
   d.onclick=()=>choose(x,d);
   box.appendChild(d);
  });
  choose(rows[0],box.firstChild);
- setStatus(`V8 verified "${name}" against the CF32 0SD address set before location ranking. The displayed UPRNs remain research candidates until the exact address→UPRN join is proven.`);
+ setStatus(`V9 verified "${name}" against the CF32 0SD address set before location ranking. The displayed UPRNs remain research candidates until the exact address→UPRN join is proven.`);
 }
 function choose(x,node){selected=x;document.querySelectorAll('.result').forEach(n=>n.style.background='');if(node)node.style.background='#fff8e9';$('actions').style.display='flex'}
 $('search').onclick=run;
