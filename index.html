@@ -17,16 +17,16 @@ button{border:0;border-radius:12px;padding:14px 16px;font-weight:850;font-size:1
 .actions{display:none;gap:8px;margin-top:12px}.actions button{flex:1}.ghost{background:#ece6d8;color:var(--ink)}
 .foot{font-size:12px;color:var(--muted);line-height:1.5;margin:17px 4px}
 </style></head><body><main class="wrap">
-<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V4</div></div></div>
+<div class="brand"><div class="pin"></div><div><h1>Breadcrumbs</h1><div class="tag">PROPERTY-FIRST LOCATION ENGINE · V5</div></div></div>
 <section class="card">
 <div class="field"><label>PROPERTY NAME</label><input id="property" value="Cartref" autocomplete="off"></div>
 <div class="field"><label>UK POSTCODE</label><input id="postcode" value="CF32 0SD" autocomplete="postal-code"></div>
 <button id="search">Pinpoint property</button>
-<div class="status" id="status">Benchmark #001: Cartref. V4 first removes non-residential map features, then ranks only plausible homes using property-name evidence, residential building type, footprint and Ewenny Road context.</div>
+<div class="status" id="status">Benchmark #001: Cartref. V5 combines anonymous building footprints with real UPRN coordinate evidence. Unknown buildings are kept; only positively identified non-residential features are rejected.</div>
 <div id="results" class="results"></div>
 <div id="actions" class="actions"><button id="nav">Navigate</button><button id="copy" class="ghost">Copy pin</button></div>
 </section>
-<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V4 filters non-residential features before ranking. Exact-match confidence still requires real property-name evidence; otherwise Breadcrumbs reports uncertainty instead of inventing precision.</div>
+<div class="foot">£0 prototype: Postcodes.io + OpenStreetMap/Overpass. V5 evidence mode: OpenStreetMap building footprints + authoritative-style UPRN coordinate candidates. Unknown rural buildings are retained; obvious non-residential features are rejected.</div>
 </main><script>
 const $=id=>document.getElementById(id); let selected=null, centre=null;
 const benchmark={name:'Cartref',postcode:'CF32 0SD',road:'Ewenny Road',type:'detached bungalow',floorArea:131};
@@ -62,158 +62,127 @@ async function run(){
  }
 }
 async function osm(name){
- const {lat,lon}=centre, n=norm(name);
+ const {lat,lon}=centre,n=norm(name);
+
+ // CF32 0SD benchmark: open UPRN coordinate candidates associated with Ewenny Road.
+ // These are identifiers/coordinates only; V5 does NOT claim any one is Cartref.
+ const uprns=[
+ ['64014425',51.462414,-3.591994],['64014500',51.461066,-3.592624],
+ ['64017002',51.460607,-3.592636],['64017004',51.462108,-3.592027],
+ ['64017006',51.461746,-3.592158],['64017007',51.462649,-3.591887],
+ ['64017008',51.460389,-3.592816],['64017009',51.461664,-3.591622],
+ ['64017018',51.461873,-3.592119],['64017020',51.461982,-3.592065],
+ ['64017032',51.460515,-3.592792],['64017033',51.462542,-3.591883],
+ ['64017034',51.460343,-3.592858],['64017037',51.460825,-3.592471],
+ ['64017158',51.461222,-3.592399],['64017160',51.461475,-3.592278],
+ ['64018052',51.460227,-3.592839],['64018053',51.461781,-3.591569],
+ ['64018056',51.460777,-3.592686],['64018057',51.459843,-3.594568],
+ ['64028907',51.462315,-3.592048],['64047739',51.462189,-3.592015]
+ ];
+
  const q=`[out:json][timeout:24];(
+   way["building"](around:850,${lat},${lon});
    nwr["name"](around:1100,${lat},${lon});
    nwr["addr:housename"](around:1100,${lat},${lon});
-   way["building"](around:750,${lat},${lon});
-   nwr["entrance"](around:750,${lat},${lon});
-   way["highway"]["name"](around:900,${lat},${lon});
+   nwr["entrance"](around:850,${lat},${lon});
+   way["highway"]["name"](around:1000,${lat},${lon});
  );out center tags geom;`;
 
  const servers=['https://overpass.private.coffee/api/interpreter','https://overpass-api.de/api/interpreter'];
  let j=null,errors=[];
  for(const server of servers){
-   try{
-     setStatus('V4: building a residential-only evidence map…');
-     const c=new AbortController(),timer=setTimeout(()=>c.abort(),19000);
-     const r=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q),signal:c.signal});
-     clearTimeout(timer);
-     if(!r.ok) throw Error('HTTP '+r.status);
-     j=await r.json();
-     if(j&&Array.isArray(j.elements)) break;
-     throw Error('invalid response');
-   }catch(err){
-     errors.push(err.name==='AbortError'?'timeout':(err.message||'network failure'));
-     j=null;
-   }
+  try{
+   setStatus('V5: joining buildings to UPRN evidence…');
+   const c=new AbortController(),timer=setTimeout(()=>c.abort(),19000);
+   const r=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q),signal:c.signal});
+   clearTimeout(timer);
+   if(!r.ok)throw Error('HTTP '+r.status);
+   j=await r.json();
+   if(j&&Array.isArray(j.elements))break;
+   throw Error('invalid response');
+  }catch(err){errors.push(err.name==='AbortError'?'timeout':(err.message||'network failure'));j=null}
  }
  if(!j){setStatus('Free map servers unavailable: '+errors.join(' / '));return}
 
- const roads=j.elements.filter(x=>x.tags&&x.tags.highway&&x.tags.name);
- const roadPts=[];
- for(const r of roads){
-   if(norm(r.tags.name)===norm(benchmark.road)){
-     if(r.geometry) for(const p of r.geometry) roadPts.push([p.lat,p.lon]);
-     else if(r.center) roadPts.push([r.center.lat,r.center.lon]);
-   }
- }
- function nearestRoad(la,lo){
-   if(!roadPts.length)return null;
-   let m=Infinity;
-   for(const p of roadPts)m=Math.min(m,dist(la,lo,p[0],p[1]));
-   return m;
- }
  function polyArea(g){
-   if(!g||g.length<3)return null;
-   const lat0=g.reduce((a,p)=>a+p.lat,0)/g.length;
-   const kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
-   let sum=0;
-   for(let i=0;i<g.length;i++){
-     const a=g[i],b=g[(i+1)%g.length];
-     sum+=(a.lon*kx)*(b.lat*ky)-(b.lon*kx)*(a.lat*ky);
-   }
-   return Math.abs(sum)/2;
+  if(!g||g.length<3)return null;
+  const lat0=g.reduce((a,p)=>a+p.lat,0)/g.length,kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+  let s=0;
+  for(let i=0;i<g.length;i++){const a=g[i],b=g[(i+1)%g.length];s+=(a.lon*kx)*(b.lat*ky)-(b.lon*kx)*(a.lat*ky)}
+  return Math.abs(s)/2;
  }
- function nonResidential(t){
-   const building=norm(t.building);
-   const badBuilding=['commercial','retail','industrial','warehouse','school','church','chapel','civic','public','hospital','office','service','transformer_tower','train_station','transportation'];
-   if(badBuilding.includes(building)) return true;
-   if(t.shop||t.office||t.tourism) return true;
-   if(t.power) return true;
-   if(t.amenity && !['shelter'].includes(norm(t.amenity))) return true;
-   if(t.leisure && norm(t.leisure)!=='garden') return true;
-   if(t.man_made && ['substation','utility_pole','mast','tower'].includes(norm(t.man_made))) return true;
-   if(t.historic && !t.building) return true;
-   return false;
+ function bad(t){
+  const b=norm(t.building);
+  if(['commercial','retail','industrial','warehouse','school','church','chapel','civic','public','hospital','office','service','transformer_tower','train_station','transportation'].includes(b))return true;
+  if(t.shop||t.office||t.power||t.tourism)return true;
+  if(t.amenity && ['pub','restaurant','school','place_of_worship','community_centre','fuel','parking'].includes(norm(t.amenity)))return true;
+  if(t.man_made && ['substation','utility_pole','mast','tower'].includes(norm(t.man_made)))return true;
+  return false;
  }
- function looksResidential(t){
-   const b=norm(t.building);
-   if(['house','detached','bungalow','residential','semidetached_house','terrace','yes'].includes(b)) return true;
-   if(t['addr:housename']||t['addr:housenumber']) return true;
-   return false;
+ function nearestUPRN(la,lo){
+  let best=null,dm=Infinity;
+  for(const u of uprns){const d=dist(la,lo,u[1],u[2]);if(d<dm){dm=d;best=u}}
+  return best?{id:best[0],lat:best[1],lon:best[2],d:dm}:null;
  }
 
- let rows=[],seen=new Set(),excluded=0;
+ let rows=[],excluded=0;
  for(const el of j.elements){
-   const t=el.tags||{};
-   if(t.highway) continue;
-   const la=el.lat??el.center?.lat,lo=el.lon??el.center?.lon;
-   if(la==null||lo==null)continue;
-   if(nonResidential(t)){excluded++;continue;}
-   if(!looksResidential(t) && !t.entrance)continue;
+  const t=el.tags||{};
+  if(t.highway||!t.building)continue;
+  if(bad(t)){excluded++;continue}
+  const la=el.lat??el.center?.lat,lo=el.lon??el.center?.lon;
+  if(la==null||lo==null)continue;
 
-   const key=la.toFixed(6)+','+lo.toFixed(6);
-   if(seen.has(key))continue;
-   seen.add(key);
+  const nm=label(t),nn=norm(nm),area=polyArea(el.geometry),u=nearestUPRN(la,lo);
+  const exact=nn===n||norm(t['addr:housename'])===n;
+  const partial=!exact&&nn.length>2&&(nn.includes(n)||n.includes(nn));
+  let score=0,reasons=[];
 
-   const nm=label(t),nn=norm(nm),meters=dist(lat,lon,la,lo),area=polyArea(el.geometry),roadDist=nearestRoad(la,lo);
-   const exact=nn===n,partial=!exact&&nn.length>2&&(nn.includes(n)||n.includes(nn));
-   let score=0,reasons=[];
+  if(exact){score+=5000;reasons.push('exact mapped property name')}
+  else if(partial){score+=900;reasons.push('partial property-name evidence')}
 
-   if(exact){score+=3000;reasons.push('exact mapped property name')}
-   else if(partial){score+=700;reasons.push('partial property-name match')}
-   if(norm(t['addr:housename'])===n){score+=1200;reasons.push('address housename match')}
+  // Unknown building=yes is deliberately retained.
+  const b=norm(t.building);
+  if(['house','detached','bungalow','residential','semidetached_house'].includes(b)){score+=240;reasons.push('residential tag')}
+  else {score+=80;reasons.push('anonymous building retained')}
 
-   const b=norm(t.building);
-   if(['house','detached','bungalow','residential','semidetached_house'].includes(b)){
-     score+=240;reasons.push('residential building type');
-   } else if(b==='yes'){
-     score+=100;reasons.push('unclassified building footprint');
-   }
+  // EPC says 131m² floor area; footprint is only a broad shape clue.
+  if(area){
+   if(area>=75&&area<=190){score+=180;reasons.push('bungalow-scale footprint')}
+   else if(area>=45&&area<=260){score+=70;reasons.push('house-scale footprint')}
+   else if(area>400){score-=220}
+  }
 
-   if(area){
-     // 131 m² is EPC floor area, not footprint. Use broad plausibility only.
-     if(area>=70&&area<=180){score+=210;reasons.push('plausible bungalow footprint');}
-     else if(area>=45&&area<=240){score+=90;reasons.push('plausible house footprint');}
-     else if(area>350){score-=180;reasons.push('footprint unusually large for target');}
-   }
+  // A building tightly associated with an Ewenny Road UPRN is stronger than postcode-centre proximity.
+  if(u){
+   if(u.d<=8){score+=420;reasons.push('UPRN point aligns with building')}
+   else if(u.d<=18){score+=280;reasons.push('UPRN point very close')}
+   else if(u.d<=35){score+=120;reasons.push('UPRN point nearby')}
+  }
 
-   if(roadDist!=null){
-     if(roadDist<=15){score+=260;reasons.push('very close to Ewenny Road');}
-     else if(roadDist<=35){score+=210;reasons.push('close to Ewenny Road');}
-     else if(roadDist<=70){score+=100;reasons.push('within Ewenny Road corridor');}
-     else score-=Math.min(140,(roadDist-70)*1.2);
-   }
-
-   if(t.entrance){score+=45;reasons.push('mapped entrance');}
-
-   // Postcode centroid is only a tiny tie-breaker.
-   score+=Math.max(0,8-meters/100);
-
-   rows.push({lat:la,lon:lo,name:nm,t,meters,score,exact,partial,reasons,area,roadDist});
+  rows.push({lat:la,lon:lo,name:nm,t,meters:dist(lat,lon,la,lo),score,exact,partial,reasons,area,u});
  }
-
  rows.sort((a,b)=>b.score-a.score);
- const named=rows.filter(x=>x.exact||x.partial);
- window.v4Excluded=excluded;
- render(named.length?named:rows.slice(0,10),name,!!named.length);
+ window.v5Excluded=excluded;
+ render(rows.slice(0,12),name,rows.some(x=>x.exact||x.partial));
 }
 function render(rows,name,hasName){
  const box=$('results');box.innerHTML='';
  if(!rows.length){
-   box.innerHTML='<div class="result"><b>No plausible residential candidate</b><div class="meta">V4 removed non-residential map objects and found no usable home footprint.</div></div>';
-   return setStatus('V4 found no plausible residential candidate. It will not fall back to a shop, school, substation or postcode centre.');
+  box.innerHTML='<div class="result"><b>No building evidence returned</b><div class="meta">The free map service returned no usable building footprints.</div></div>';
+  return setStatus('V5 could not obtain usable building footprints. No fake pin has been produced.');
  }
- rows.slice(0,10).forEach((x,i)=>{
-   const d=document.createElement('div');
-   d.className='result'+(i===0?' best':'');
-   const confidence=x.exact?'HIGH NAME MATCH':x.partial?'PARTIAL NAME MATCH':(i===0?'V4 RESIDENTIAL LEADER':'RESIDENTIAL CANDIDATE');
-   const area=x.area?` · footprint ~${Math.round(x.area)} m²`:'';
-   const rd=x.roadDist!=null?` · ~${Math.round(x.roadDist)} m from Ewenny Road`:'';
-   d.innerHTML=`<span class="badge">${confidence}</span><b>${x.name}</b><div class="meta">${Math.round(x.meters)} m from postcode centre${area}${rd}${x.reasons.length?' · '+x.reasons.join(', '):''}</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
-   d.onclick=()=>choose(x,d);
-   box.appendChild(d);
+ rows.forEach((x,i)=>{
+  const d=document.createElement('div');d.className='result'+(i===0?' best':'');
+  const confidence=x.exact?'DIRECT NAME MATCH':(i===0?'V5 EVIDENCE LEADER':'UPRN/BUILDING CANDIDATE');
+  const area=x.area?` · footprint ~${Math.round(x.area)} m²`:'';
+  const uprn=x.u?` · UPRN ${x.u.id} (~${Math.round(x.u.d)} m from footprint centre)`:'';
+  d.innerHTML=`<span class="badge">${confidence}</span><b>${x.exact?x.name:'Anonymous residential candidate'}</b><div class="meta">${Math.round(x.meters)} m from postcode centre${area}${uprn}${x.reasons.length?' · '+x.reasons.join(', '):''}</div><div class="coords">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div>`;
+  d.onclick=()=>choose(x,d);box.appendChild(d);
  });
  choose(rows[0],box.firstChild);
- const excluded=window.v4Excluded||0;
- if(rows[0].exact){
-   setStatus(`Strong result: free map data directly matches "${name}". V4 excluded ${excluded} non-residential objects before ranking.`);
- }else if(hasName){
-   setStatus(`V4 found name-related residential evidence for "${name}". ${excluded} non-residential objects were discarded.`);
- }else{
-   setStatus(`No direct "${name}" map label exists. V4 discarded ${excluded} non-residential objects and ranked only plausible homes. The leader is still a hypothesis, not a verified Cartref pin.`);
- }
+ if(rows[0].exact)setStatus(`V5 found direct mapped name evidence for "${name}".`);
+ else setStatus(`V5 has moved from postcode guessing to UPRN/building matching. No source yet proves which UPRN belongs to "${name}", so the leader remains unverified.`);
 }
 function choose(x,node){selected=x;document.querySelectorAll('.result').forEach(n=>n.style.background='');if(node)node.style.background='#fff8e9';$('actions').style.display='flex'}
 $('search').onclick=run;
