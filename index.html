@@ -215,7 +215,10 @@ async function resolveAuthoritatively(name, postcode){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({property:name,postcode:postcode})
     });
-    if(!response.ok) throw new Error('resolver unavailable');
+    if(!response.ok){
+      const data=await response.json().catch(()=>({}));
+      throw new Error(data?.evidence?.reason || data?.message || `resolver HTTP ${response.status}`);
+    }
     const data=await response.json();
 
     if(data && data.verified===true && data.uprn && Number.isFinite(Number(data.latitude)) && Number.isFinite(Number(data.longitude))){
@@ -238,7 +241,7 @@ async function resolveAuthoritatively(name, postcode){
     if(text) text.textContent='The authoritative service responded, but did not return a verified property-level UPRN and coordinate. Navigation remains locked.';
   }catch(err){
     if(title) title.textContent='Authoritative service not connected';
-    if(text) text.innerHTML='V15 is ready to call the secure resolver, but its deployed URL has not been added yet. Navigation remains locked.';
+    if(text) text.textContent=`Resolver error: ${err?.message || err}. Navigation remains locked.`;
   }
   selected=null;
   const actions=$('actions');
